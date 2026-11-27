@@ -1,7 +1,7 @@
 /* Service worker: lets the app open quickly and without a connection.
    App files: try the network first so updates arrive automatically, fall back to the saved copy.
    Scanner library: use the saved copy first. */
-const CACHE = 'prep-v0.1.0';
+const CACHE = 'prep-v0.2.1';
 const APP = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icon-192.png', 'icon-512.png'];
 const LIB = 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js';
 

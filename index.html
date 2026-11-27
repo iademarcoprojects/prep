@@ -70,6 +70,10 @@
         <button class="btn grow" id="btnScan">Scan a barcode</button>
         <button class="btn alt hidden" id="btnStop">Stop</button>
       </div>
+      <button class="btn alt" id="btnPhoto" style="width:100%;margin-top:8px">Take a photo instead</button>
+      <input type="file" id="photoInput" accept="image/*" capture="environment" class="hidden">
+      <div id="photoReader" class="hidden"></div>
+      <p class="small">Tip: hold the barcode level, filling most of the box, about 6-8 inches away.</p>
       <label for="manualCode">Or type the barcode number</label>
       <div class="row"><input id="manualCode" inputmode="numeric" placeholder="e.g. 041196910155">
         <button class="btn alt" id="btnManual">Look up</button></div>

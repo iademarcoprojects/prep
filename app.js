@@ -1,6 +1,6 @@
 /* Prep Inventory - phone app. Talks to the Apps Script back end, which reads/writes the Google Sheet. */
 'use strict';
-const VERSION = '0.1.0';
+const VERSION = '0.2.1';
 const FOOD_CATEGORIES = ['Grain / starch', 'Protein', 'Dairy', 'Fat / spread', 'Vegetable', 'Fruit',
   'Snack', 'Soup / meal', 'Sweetener / other', 'Child favorite'];
 
@@ -135,13 +135,22 @@ function renderSupplies() {
     ]));
   });
 }
+// Same rules as the Supplies status: no target -> no label; not counted; short; complete.
+function foodStatus(f) {
+  if (f.target === null || f.target === undefined) return '';
+  if (f.owned === null || f.owned === undefined) return 'Not counted';
+  return f.owned >= f.target ? 'Complete' : 'Short';
+}
 function renderFoods() {
   const q = $('foodSearch').value.trim().toLowerCase();
   const list = $('foodList'); list.innerHTML = '';
   const rows = state.foods.filter(f => !q || f.name.toLowerCase().includes(q));
   if (!rows.length) list.appendChild(el('div', { class: 'small', text: state.loadedAt ? 'No matching foods.' : 'Not loaded yet. Check Settings.' }));
   rows.forEach(f => list.appendChild(el('div', { class: 'item', onclick: () => openPanel([countEditor('food', f, f.name)]) }, [
-    el('div', { class: 'name', text: f.name }),
+    el('div', { class: 'name' }, [document.createTextNode(f.name), (() => {
+      const st = foodStatus(f);
+      return st ? el('span', { class: 'pill s-' + st.replace(/\s/g, ''), text: st }) : null;
+    })()]),
     el('div', { class: 'meta', text: 'owned ' + fmt(f.owned) + ' of ' + fmt(f.target) + ' ' + (f.unit || '') +
       '  |  ' + fmt(f.kcal) + ' kcal, ' + fmt(f.protein) + ' g protein per unit' + (f.barcodes.length ? '  |  ' + f.barcodes.length + ' barcode(s)' : '') })
   ])));
@@ -162,13 +171,37 @@ async function startScan() {
     formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128],
     experimentalFeatures: { useBarCodeDetectorIfSupported: true }, verbose: false
   });
+  // Higher camera resolution, continuous focus and a large scan area help the
+  // browser-based reader that iPhones use (Android uses the phone's built-in reader).
+  const config = {
+    fps: 15, disableFlip: true,
+    qrbox: (w, h) => ({ width: Math.floor(w * 0.92), height: Math.max(120, Math.floor(h * 0.5)) }),
+    videoConstraints: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 },
+                        advanced: [{ focusMode: 'continuous' }] }
+  };
+  const onHit = (text) => { stopScan(); if (navigator.vibrate) navigator.vibrate(80); handleCode(text); };
   try {
-    await scanner.start({ facingMode: 'environment' }, { fps: 10, qrbox: { width: 280, height: 140 } },
-      (text) => { stopScan(); if (navigator.vibrate) navigator.vibrate(80); handleCode(text); }, () => {});
+    await scanner.start({ facingMode: 'environment' }, config, onHit, () => {});
   } catch (e) {
-    stopScan();
-    toast('Camera could not start: ' + (e && e.message ? e.message : e) + '. Check camera permission for this app.', 6000);
+    // some phones refuse the high-resolution request: retry with plain settings
+    try { await scanner.start({ facingMode: 'environment' }, { fps: 15, qrbox: config.qrbox, disableFlip: true }, onHit, () => {}); }
+    catch (e2) {
+      stopScan();
+      toast('Camera could not start: ' + (e2 && e2.message ? e2.message : e2) + '. Check camera permission, or use "Take a photo instead".', 6000);
+    }
   }
+}
+// Fallback: decode a still photo. A full-resolution photo is much easier to read than live video.
+async function scanPhoto(file) {
+  if (!file) return;
+  if (typeof Html5Qrcode === 'undefined') return toast('Scanner library did not load. Check the internet connection and reopen the app.');
+  await stopScan();
+  const F = Html5QrcodeSupportedFormats;
+  const reader = new Html5Qrcode('photoReader', { formatsToSupport: [F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.CODE_128], verbose: false });
+  toast('Reading photo...', 2000);
+  try { const text = await reader.scanFile(file, false); handleCode(text); }
+  catch (e) { toast('No barcode found in the photo. Fill the frame with the barcode, hold it level, and try again, or type the number.', 6000); }
+  finally { try { reader.clear(); } catch (e) {} $('photoInput').value = ''; }
 }
 async function stopScan() {
   $('reader').classList.add('hidden'); $('btnStop').classList.add('hidden'); $('btnScan').classList.remove('hidden');
@@ -267,6 +300,8 @@ $('btnSave').addEventListener('click', async () => {
 document.querySelectorAll('nav button').forEach(b => b.addEventListener('click', () => show(b.dataset.view)));
 $('btnScan').addEventListener('click', startScan);
 $('btnStop').addEventListener('click', stopScan);
+$('btnPhoto').addEventListener('click', () => $('photoInput').click());
+$('photoInput').addEventListener('change', (e) => scanPhoto(e.target.files[0]));
 $('btnManual').addEventListener('click', () => handleCode($('manualCode').value));
 ['supSearch', 'supCat', 'supStatus'].forEach(id => $(id).addEventListener('input', renderSupplies));
 $('foodSearch').addEventListener('input', renderFoods);
